@@ -1,0 +1,4 @@
+fastapi
+uvicorn
+xmltodict
+pydantic

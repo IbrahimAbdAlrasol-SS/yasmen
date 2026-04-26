@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nmap Security Nexus</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- مكتبة الرسم التفاعلي (العقد والروابط) -->
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --glass-bg: rgba(255, 255, 255, 0.03);
+            --glass-border: rgba(255, 255, 255, 0.05);
+            --primary: #00f0ff;
+            --danger: #ff2a5f;
+            --success: #00ff88;
+            --warning: #ffb100;
+            --text-main: #ffffff;
+            --text-muted: #8b9bb4;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
+        body {
+            background-color: var(--bg-color);
+            background-image: radial-gradient(circle at 15% 50%, rgba(0, 240, 255, 0.05), transparent 25%),
+                              radial-gradient(circle at 85% 30%, rgba(255, 42, 95, 0.05), transparent 25%);
+            color: var(--text-main); height: 100vh; display: flex; overflow: hidden;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 320px; background: var(--glass-bg); backdrop-filter: blur(20px);
+            border-right: 1px solid var(--glass-border); padding: 2rem; display: flex; flex-direction: column; gap: 2rem; z-index: 10;
+        }
+
+        .logo { font-size: 1.8rem; font-weight: 800; letter-spacing: 1px; color: #fff; display: flex; align-items: center; gap: 12px; }
+        .logo i { color: var(--primary); }
+
+        .form-group { display: flex; flex-direction: column; gap: 8px; }
+        .form-group label { font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; }
+        input, select { background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); color: var(--text-main); padding: 14px 15px; border-radius: 8px; font-size: 0.95rem; outline: none; }
+        input:focus, select:focus { border-color: var(--primary); box-shadow: 0 0 15px rgba(0, 240, 255, 0.15); }
+        button { background: linear-gradient(135deg, var(--primary), #0077ff); color: #000; border: none; padding: 15px; border-radius: 8px; font-weight: 800; text-transform: uppercase; cursor: pointer; display: flex; justify-content: center; align-items: center; gap: 10px; margin-top: 1rem; transition: 0.3s; }
+        button:hover { transform: translateY(-2px); box-shadow: 0 5px 20px rgba(0, 240, 255, 0.4); }
+        button:disabled { background: #2a2a2a; color: #666; cursor: not-allowed; transform: none; box-shadow: none; }
+
+        /* Main Content */
+        .main-content { flex: 1; padding: 2.5rem; display: flex; flex-direction: column; gap: 2rem; height: 100%; }
+        .header { display: flex; justify-content: space-between; align-items: flex-end; padding-bottom: 1.5rem; border-bottom: 1px solid var(--glass-border); }
+        
+        .panel { background: var(--glass-bg); backdrop-filter: blur(10px); border: 1px solid var(--glass-border); border-radius: 16px; padding: 2rem; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.2); flex: 1; position: relative; }
+        .panel-header { font-size: 1.2rem; font-weight: 600; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 10px; color: var(--primary); text-transform: uppercase; border-bottom: 1px solid var(--glass-border); padding-bottom: 1rem; }
+
+        /* Interactive Map Container */
+        #network-graph {
+            flex: 1;
+            width: 100%;
+            height: 100%;
+            border-radius: 12px;
+            background: rgba(0,0,0,0.4);
+            border: 1px solid rgba(0, 240, 255, 0.1);
+            display: none;
+            cursor: grab;
+        }
+        #network-graph:active { cursor: grabbing; }
+
+        /* Alert Box */
+        .alert-box { padding: 1.5rem; border-radius: 8px; background: rgba(255,42,95,0.1); border: 1px solid var(--danger); color: #fff; margin-bottom: 1rem; display: none; font-weight: 600; }
+
+        /* Modal / Expanded View */
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); backdrop-filter: blur(5px); z-index: 100; display: none; justify-content: center; align-items: center; }
+        .modal { background: #0f1524; border: 1px solid var(--primary); border-radius: 16px; width: 600px; max-width: 90%; max-height: 90vh; overflow-y: auto; padding: 2rem; position: relative; box-shadow: 0 0 50px rgba(0, 240, 255, 0.2); }
+        .modal-close { position: absolute; top: 20px; right: 20px; background: none; color: var(--text-muted); border: none; font-size: 1.5rem; cursor: pointer; }
+        .modal-close:hover { color: var(--danger); }
+        
+        .cve-badge { padding: 5px 10px; border-radius: 4px; font-weight: 800; font-size: 0.8rem; display: inline-block; margin-right: 5px; margin-bottom: 5px; }
+        .cve-critical { background: rgba(255, 42, 95, 0.2); color: var(--danger); border: 1px solid var(--danger); }
+        .cve-high { background: rgba(255, 177, 0, 0.2); color: var(--warning); border: 1px solid var(--warning); }
+        
+        .vuln-item { background: rgba(0,0,0,0.4); padding: 1rem; border-radius: 8px; margin-bottom: 1rem; border-left: 3px solid var(--danger); }
+        .vuln-link { color: var(--primary); text-decoration: none; font-size: 0.85rem; }
+        
+        .custom-scan-box { background: rgba(0, 240, 255, 0.05); border: 1px solid rgba(0, 240, 255, 0.2); padding: 1.5rem; border-radius: 8px; margin-top: 1.5rem; }
+
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+    </style>
+</head>
+<body>
+
+    <aside class="sidebar">
+        <div class="logo"><i class="fa-solid fa-crosshairs"></i> NEXUS OS</div>
+        <form id="scanForm" style="display: flex; flex-direction: column; gap: 1.5rem;">
+            <div class="form-group">
+                <label>Target IP / Domain</label>
+                <input type="text" id="target_ip" placeholder="e.g. 192.168.1.1" required autocomplete="off">
+            </div>
+            <div class="form-group">
+                <label>Scan Profile</label>
+                <select id="scan_type">
+                    <option value="basic">Reconnaissance (Ports & OS)</option>
+                    <option value="vuln">Deep Vulnerability Analysis (CVEs)</option>
+                </select>
+            </div>
+            <button type="submit" id="scanBtn">
+                <i class="fa-solid fa-radar" id="spinnerIcon"></i> <span id="btnText">Initiate Scan</span>
+            </button>
+        </form>
+    </aside>
+
+    <main class="main-content">
+        <header class="header">
+            <div>
+                <h1 style="font-size: 2.2rem; font-weight: 300;">Network <span style="font-weight: 800;">Topology Map</span></h1>
+                <p style="color: var(--text-muted);">Interactive architecture visualization & vulnerability detection.</p>
+            </div>
+        </header>
+
+        <div class="panel">
+            <div class="panel-header"><i class="fa-solid fa-diagram-project"></i> Interactive Node Map <span style="font-size:0.8rem; font-weight:400; color:var(--text-muted); margin-left:10px;">(Click on nodes to view details & run custom commands)</span></div>
+            
+            <div id="alertBox" class="alert-box"></div>
+            
+            <div id="network-graph"></div>
+
+            <div id="emptyState" style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; opacity: 0.3;">
+                <i class="fa-solid fa-globe" style="font-size: 5rem; margin-bottom: 1rem;"></i>
+                <h2>Map is empty</h2>
+                <p>Enter a target IP and initiate scan to draw the network.</p>
+            </div>
+        </div>
+    </main>
+
+    <!-- Modal for Node Details -->
+    <div class="modal-overlay" id="portModal">
+        <div class="modal">
+            <button class="modal-close" onclick="closeModal()"><i class="fa-solid fa-xmark"></i></button>
+            <h2 id="modalTitle" style="color: var(--primary); margin-bottom: 1rem; border-bottom: 1px solid var(--glass-border); padding-bottom: 1rem;">
+                <i class="fa-solid fa-ethernet"></i> Port Details
+            </h2>
+            
+            <div id="modalInfo" style="margin-bottom: 1.5rem;"></div>
+            <div id="modalVulns"></div>
+            
+            <div class="custom-scan-box">
+                <h4 style="margin-bottom: 15px;"><i class="fa-solid fa-terminal"></i> Custom Port Actions</h4>
+                <select id="custom_script" style="width: 100%; margin-bottom: 15px;">
+                    <option value="aggressive">Aggressive Scan (-A)</option>
+                    <option value="vuln">Vulnerability Scan (vuln)</option>
+                    <option value="http-title">Fetch HTTP Title (http-title)</option>
+                    <option value="http-enum">Enumerate Directories (http-enum)</option>
+                    <option value="ftp-anon">Check Anonymous FTP (ftp-anon)</option>
+                </select>
+                <button onclick="runCustomScan()" id="customBtn" style="width: 100%; padding: 12px; font-size: 0.9rem;">
+                    <i class="fa-solid fa-play"></i> Run Script on this Node
+                </button>
+                <div id="customResult" style="margin-top: 15px; font-size: 0.85rem; color: var(--success); white-space: pre-wrap; background: rgba(0,0,0,0.5); padding: 15px; border-radius: 8px; display: none; border: 1px solid var(--glass-border); max-height: 300px; overflow-y: auto;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentTargetIp = "";
+        let currentSelectedPort = null;
+        let globalPortsData = {};
+        let network = null;
+
+        document.getElementById('scanForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            currentTargetIp = document.getElementById('target_ip').value;
+            const type = document.getElementById('scan_type').value;
+            const btn = document.getElementById('scanBtn');
+            const btnText = document.getElementById('btnText');
+            
+            // UI Reset
+            document.getElementById('emptyState').style.display = 'none';
+            document.getElementById('network-graph').style.display = 'none';
+            document.getElementById('alertBox').style.display = 'none';
+            if(network !== null) network.destroy(); // Clear old map
+            
+            btn.disabled = true;
+            btnText.innerText = 'Scanning...';
+            document.getElementById('spinnerIcon').className = 'fa-solid fa-circle-notch fa-spin';
+            
+            try {
+                let response = await fetch('/api/scan', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ target_ip: currentTargetIp, scan_type: type })
+                });
+                let data = await response.json();
+                
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const ws = new WebSocket(`${protocol}//${window.location.host}/ws/scan_status/${data.scan_id}`);
+
+                let timerSeconds = 0;
+                let timerInterval = setInterval(() => {
+                    timerSeconds++;
+                    let m = Math.floor(timerSeconds / 60);
+                    let s = timerSeconds % 60;
+                    btnText.innerText = `Scanning... (${m}m ${s}s)`;
+                }, 1000);
+
+                ws.onmessage = function(event) {
+                    let result = JSON.parse(event.data);
+                    if (result.status !== 'running') {
+                        clearInterval(timerInterval);
+                        ws.close();
+                        btn.disabled = false;
+                        btnText.innerText = 'Initiate Scan';
+                        document.getElementById('spinnerIcon').className = 'fa-solid fa-radar';
+
+                        if (result.status === 'success') {
+                            drawTopology(currentTargetIp, result.data);
+                        } else {
+                            showAlert('Error executing Nmap: ' + (result.message || 'Unknown failure'));
+                        }
+                    }
+                };
+                
+                ws.onerror = function() {
+                    clearInterval(timerInterval);
+                    btn.disabled = false;
+                    btnText.innerText = 'Initiate Scan';
+                    document.getElementById('spinnerIcon').className = 'fa-solid fa-radar';
+                    showAlert("WebSocket Error. The server might have disconnected.");
+                };
+            } catch (error) {
+                btn.disabled = false;
+                btnText.innerText = 'Initiate Scan';
+                document.getElementById('spinnerIcon').className = 'fa-solid fa-radar';
+                showAlert("Connection Error. Is the backend running?");
+            }
+        });
+
+        function showAlert(msg) {
+            const ab = document.getElementById('alertBox');
+            ab.style.display = 'block';
+            ab.innerText = msg;
+            document.getElementById('emptyState').style.display = 'flex';
+        }
+
+        function parseCVEs(scriptOutput) {
+            if (!scriptOutput) return "";
+            let html = "";
+            let lines = scriptOutput.split('\n');
+            let hasCVE = false;
+            
+            lines.forEach(line => {
+                if(line.includes('CVE-')) {
+                    hasCVE = true;
+                    let parts = line.trim().split(/\s+/);
+                    let cve = parts.find(p => p.startsWith('CVE-')) || "Unknown";
+                    let score = parts.find(p => !isNaN(parseFloat(p))) || "N/A";
+                    let link = parts.find(p => p.startsWith('http')) || "#";
+                    
+                    let badgeClass = parseFloat(score) >= 7.0 ? 'cve-critical' : 'cve-high';
+                    
+                    html += `<div class="vuln-item">
+                        <span class="cve-badge ${badgeClass}">${cve} (Score: ${score})</span>
+                        <a href="${link}" target="_blank" class="vuln-link"><i class="fa-solid fa-external-link"></i> View details</a>
+                    </div>`;
+                }
+            });
+            return hasCVE ? html : `<div style="color: var(--success);"><i class="fa-solid fa-shield-check"></i> No critical vulnerabilities found.</div>`;
+        }
+
+        function drawTopology(targetIp, nmapData) {
+            try {
+                let nmaprun = nmapData.nmaprun;
+                if (!nmaprun || !nmaprun.host) {
+                    showAlert("⚠️ Target is offline or blocking Nmap. (No hosts returned)");
+                    return;
+                }
+
+                document.getElementById('network-graph').style.display = 'block';
+
+                let nodesArr = [
+                    { id: 'host', label: 'Scanner\n(Nexus OS)', shape: 'image', image: 'https://cdn-icons-png.flaticon.com/512/3067/3067252.png', size: 30, font: {color: '#fff', size: 14} },
+                    { id: 'target', label: targetIp + '\n(Target)', shape: 'image', image: 'https://cdn-icons-png.flaticon.com/512/3208/3208726.png', size: 40, font: {color: '#fff', size: 16, bold: true} }
+                ];
+                let edgesArr = [
+                    { from: 'host', to: 'target', color: {color: 'rgba(0, 240, 255, 0.4)'}, width: 2, dashes: true }
+                ];
+
+                globalPortsData = {};
+
+                let hostInfo = nmaprun.host;
+                if (Array.isArray(hostInfo)) hostInfo = hostInfo[0];
+
+                if (!hostInfo.ports || !hostInfo.ports.port) {
+                    showAlert("⚠️ Target is UP, but no open ports were found. (All ports filtered/closed).");
+                } else {
+                    let ports = hostInfo.ports.port;
+                    if (!Array.isArray(ports)) ports = [ports];
+                    
+                    ports.forEach(port => {
+                        let portId = port['@portid'];
+                        let state = port.state['@state'];
+                        let service = port.service ? port.service['@name'] : 'Unknown';
+                        let version = port.service && port.service['@version'] ? port.service['@version'] : '';
+                        let product = port.service && port.service['@product'] ? port.service['@product'] : '';
+                        
+                        let isDanger = false;
+                        let scriptOutput = "";
+                        if (port.script) {
+                            let scripts = Array.isArray(port.script) ? port.script : [port.script];
+                            scripts.forEach(s => { 
+                                if(s['@id'] === 'vulners') {
+                                    scriptOutput = s['@output'];
+                                    if (scriptOutput.includes('CVE-')) isDanger = true;
+                                }
+                            });
+                        }
+
+                        let nodeColor = isDanger ? '#ff2a5f' : (state === 'open' ? '#00ff88' : '#ffb100');
+                        let pId = 'port_' + portId;
+
+                        nodesArr.push({
+                            id: pId,
+                            label: `Port ${portId}\n${service.toUpperCase()}`,
+                            shape: 'dot',
+                            size: isDanger ? 25 : 18,
+                            color: {
+                                background: nodeColor,
+                                border: isDanger ? '#fff' : nodeColor,
+                                highlight: { background: nodeColor, border: '#fff' }
+                            },
+                            font: {color: '#fff', size: 12}
+                        });
+
+                        edgesArr.push({
+                            from: 'target',
+                            to: pId,
+                            color: {color: nodeColor, opacity: 0.6},
+                            width: isDanger ? 3 : 1
+                        });
+
+                        globalPortsData[pId] = {
+                            port: portId, state: state, service: service,
+                            details: `${product} ${version}`.trim(), vulns: scriptOutput
+                        };
+                    });
+                }
+
+                const container = document.getElementById('network-graph');
+                const data = { nodes: new vis.DataSet(nodesArr), edges: new vis.DataSet(edgesArr) };
+                const options = {
+                    physics: {
+                        solver: 'forceAtlas2Based',
+                        forceAtlas2Based: { gravitationalConstant: -40, centralGravity: 0.01, springLength: 100, springConstant: 0.08 }
+                    },
+                    interaction: { hover: true }
+                };
+
+                network = new vis.Network(container, data, options);
+
+                network.on("click", function (params) {
+                    if (params.nodes.length > 0) {
+                        let nodeId = params.nodes[0];
+                        if (nodeId.startsWith('port_')) {
+                            openModal(nodeId);
+                        }
+                    }
+                });
+
+            } catch (err) {
+                console.error(err);
+                showAlert("UI Rendering Error: " + err.message);
+            }
+        }
+
+        function openModal(nodeId) {
+            currentSelectedPort = globalPortsData[nodeId].port;
+            let data = globalPortsData[nodeId];
+            if (!data) return;
+
+            document.getElementById('modalTitle').innerHTML = `<i class="fa-solid fa-ethernet"></i> Node Details: Port ${data.port}`;
+            
+            document.getElementById('modalInfo').innerHTML = `
+                <div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: 8px;">
+                    <div style="margin-bottom: 5px;"><span style="color:var(--text-muted)">Service:</span> <strong style="color:var(--primary)">${data.service.toUpperCase()}</strong></div>
+                    <div style="margin-bottom: 5px;"><span style="color:var(--text-muted)">State:</span> <strong style="color:${data.state==='open'?'var(--success)':'var(--danger)'}">${data.state.toUpperCase()}</strong></div>
+                    ${data.details ? `<div><span style="color:var(--text-muted)">Version:</span> ${data.details}</div>` : ''}
+                </div>
+            `;
+            
+            let vulnsHtml = `<h4 style="margin-bottom:10px;"><i class="fa-solid fa-bug"></i> Vulnerability Analysis</h4>`;
+            vulnsHtml += parseCVEs(data.vulns);
+            document.getElementById('modalVulns').innerHTML = vulnsHtml;
+
+            document.getElementById('customResult').style.display = 'none';
+            document.getElementById('portModal').style.display = 'flex';
+        }
+
+        function closeModal() {
+            document.getElementById('portModal').style.display = 'none';
+            currentSelectedPort = null;
+        }
+
+        async function runCustomScan() {
+            if(!currentSelectedPort) return;
+            const scriptName = document.getElementById('custom_script').value;
+            const btn = document.getElementById('customBtn');
+            const resultBox = document.getElementById('customResult');
+            
+            btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Running on Port ' + currentSelectedPort + '...';
+            btn.disabled = true;
+            resultBox.style.display = 'none';
+            
+            try {
+                let response = await fetch('/api/custom_scan', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ target_ip: currentTargetIp, port: currentSelectedPort, script_name: scriptName })
+                });
+                let data = await response.json();
+                
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const ws = new WebSocket(`${protocol}//${window.location.host}/ws/scan_status/${data.scan_id}`);
+
+                ws.onmessage = function(event) {
+                    let result = JSON.parse(event.data);
+                    if (result.status !== 'running') {
+                        ws.close();
+                        btn.innerHTML = '<i class="fa-solid fa-play"></i> Run Script on this Node';
+                        btn.disabled = false;
+                        resultBox.style.display = 'block';
+
+                        if (result.status === 'success') {
+                            try {
+                                let portInfo = result.data.nmaprun.host.ports.port;
+                                if(portInfo.script) {
+                                    let scripts = Array.isArray(portInfo.script) ? portInfo.script : [portInfo.script];
+                                    let outputStr = scripts.map(s => `[${s['@id']}]\n${s['@output']}`).join('\n\n');
+                                    resultBox.innerText = outputStr || "Script finished successfully, but returned no extra output.";
+                                } else {
+                                    resultBox.innerText = "No script output returned. The service might not match the script's requirements.";
+                                }
+                            } catch(e) {
+                                resultBox.innerText = "Scan completed, but output was not strictly matched.";
+                            }
+                        } else {
+                            resultBox.innerText = "Error: " + result.message;
+                            resultBox.style.color = "var(--danger)";
+                        }
+                    }
+                };
+            } catch(e) {
+                btn.innerHTML = '<i class="fa-solid fa-play"></i> Run Script on this Node';
+                btn.disabled = false;
+                resultBox.style.display = 'block';
+                resultBox.innerText = "Request failed. Check server.";
+            }
+        }
+    </script>
+</body>
+</html>
