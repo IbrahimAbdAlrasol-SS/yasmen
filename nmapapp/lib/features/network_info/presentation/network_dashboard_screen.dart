@@ -3,12 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:hugeicons/hugeicons.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../exploiter/presentation/metasploit_terminal_widget.dart';
 import '../../scanner/domain/port_model.dart';
 import '../../scanner/presentation/scanner_provider.dart';
 import '../../visualizer/presentation/network_tree_widget.dart';
 import '../../vulnerabilities/data/vulnerability_database.dart';
+import '../../exploiter/presentation/metasploit_provider.dart';
 import 'package:flutter/services.dart';
-import '../../visualizer/presentation/network_tree_widget.dart';
 
 class NetworkDashboardScreen extends ConsumerStatefulWidget {
   const NetworkDashboardScreen({super.key});
@@ -216,6 +217,19 @@ class _NetworkDashboardScreenState extends ConsumerState<NetworkDashboardScreen>
                       ),
                     ),
                     IconButton(
+                      icon: const Icon(Icons.rocket_launch, size: 16, color: AppColors.critical),
+                      tooltip: 'Auto-load into Terminal',
+                      onPressed: () {
+                        // Send the command directly to the embedded terminal
+                        ref.read(metasploitProvider.notifier).sendCommand(v.metasploitModule);
+                        ref.read(metasploitProvider.notifier).sendCommand('set RHOSTS ${_ipController.text}');
+                        ref.read(metasploitProvider.notifier).sendCommand('set payload cmd/unix/bind_netcat');
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Module & RHOSTS loaded into Terminal!'), duration: Duration(seconds: 2)),
+                        );
+                      },
+                    ),
+                    IconButton(
                       icon: const Icon(Icons.copy, size: 16, color: AppColors.textSecondary),
                       onPressed: () {
                         Clipboard.setData(ClipboardData(text: v.metasploitModule));
@@ -230,6 +244,13 @@ class _NetworkDashboardScreenState extends ConsumerState<NetworkDashboardScreen>
             ],
           ),
         )).toList(),
+        
+        // The Embedded Terminal goes here!
+        const Gap(16),
+        SizedBox(
+          height: 350, // Height for the terminal
+          child: MetasploitTerminalWidget(targetIp: _ipController.text),
+        ),
       ],
     );
   }

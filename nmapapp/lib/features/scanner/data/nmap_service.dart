@@ -12,7 +12,7 @@ class NmapService {
       // Note: On Kali Linux, standard user might need sudo, but we assume the app runs as root or uses pkexec/sudo
       final result = await Process.run(
         'nmap',
-        ['-sV', '-T4', '-oX', '-', targetIp],
+        ['-sS', '-T4', '-oX', '-', targetIp],
         runInShell: true,
       );
 
